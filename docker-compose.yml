@@ -1,0 +1,64 @@
+---
+services:
+    traefik:
+        image: "traefik:v3.3.4"
+        container_name: "traefik"
+        ports:
+            - "80:80"
+            - "443:443"
+        networks:
+            - proxy
+        command:
+            - --log.level=DEBUG
+            # - --accesslog=true
+            - --providers.docker=true
+            - --providers.docker.network=proxy
+            - --providers.docker.exposedByDefault=false
+            - --entrypoints.web.address=:80
+            - --entrypoints.web.http.redirections.entrypoint.to=websecure
+            - --entrypoints.web.http.redirections.entrypoint.scheme=https
+            - --entrypoints.websecure.address=:443
+            - --entrypoints.websecure.asDefault=true
+            - --entrypoints.websecure.http.tls=true
+            - --entrypoints.websecure.http.tls.certresolver=myresolver
+
+            # ACME (Let's Encrypt) configuration with Cloudflare DNS Challenge
+
+            # Your mail here
+            - --certificatesresolvers.myresolver.acme.email=your@mail.com
+
+            - --certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json
+            - --certificatesresolvers.myresolver.acme.dnschallenge=true
+            - --certificatesresolvers.myresolver.acme.dnschallenge.provider=cloudflare
+            - --certificatesresolvers.myresolver.acme.dnschallenge.delaybeforecheck=0
+            - --certificatesresolvers.myresolver.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+        volumes:
+            - "/var/run/docker.sock:/var/run/docker.sock:ro"
+            - "./letsencrypt:/letsencrypt"
+        restart: unless-stopped
+        environment:
+            # Your variables here or .env it yourself
+            - CLOUDFLARE_EMAIL=your@mail.com
+            - CLOUDFLARE_DNS_API_TOKEN=andsoonandsoforth
+
+    api:
+        build: .
+        container_name: example-container
+        labels:
+            - "traefik.enable=true"
+
+            # Your domain here
+            - "traefik.http.routers.example.rule=Host(`your.domain.tld`)"
+
+            - "traefik.http.routers.example.entrypoints=websecure"
+            - "traefik.http.routers.example.tls.certresolver=myresolver"
+
+            # Depends on what port you set on index.js
+            - "traefik.http.services.example.loadbalancer.server.port=3000"
+        restart: unless-stopped
+        networks:
+            - proxy
+
+networks:
+    proxy:
+        name: proxy
